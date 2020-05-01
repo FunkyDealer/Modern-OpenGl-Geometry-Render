@@ -1,69 +1,32 @@
-﻿#pragma comment(lib, "glew32s.lib")
-#pragma comment(lib, "glfw3.lib")
-#pragma comment(lib, "opengl32.lib")
-
-#include <iostream>
-#include <vector>
-
-#define GLEW_STATIC
-#include <GL\glew.h>
-
-#define GLFW_USE_DWM_SWAP_INTERVAL
-#include <GLFW\glfw3.h>
-
-#include <glm\glm.hpp>
-#include <glm\gtc\type_ptr.hpp>
-#include <glm\gtc\matrix_transform.hpp>
-
+﻿#include "Geometry.h"
 #include "LoadShaders.h"
-
-using namespace std;
-using namespace glm;
 
 int screenWidth = 800;
 int screenHeight = 600;
 char title[20] = "Exercicio Cubo";
-
-void init();
-void display();
-void InputManager(GLFWwindow* window, int key, int scancode, int action, int mods);
-void modsInput(GLFWwindow* window, unsigned int codepoint, int mods);
-void setFullScreen(GLFWwindow* window);
-void setWindowedScreen(GLFWwindow* window);
-void scrollCallback(GLFWwindow * window, double xoffset, double yoffset);
-GLfloat* LoadCube();
-GLfloat* LoadColors();
 
 //VAOS && VBOs
 #define NumVAOs 1
 #define NumBuffers 2 // Vertices, Cores
 GLuint VAOs[NumVAOs];
 GLuint Buffers[NumBuffers];
-//const GLuint NumVertices = 3;
-GLuint NumVertices = 6 * 6;
 
 GLuint ShaderProgram;
 
-glm::mat4 LocalWorld, View, Projection;
+mat4 LocalWorld, View, Projection;
 
 GLfloat zoom = 10.0f;
 GLfloat ANGLE = 0.0f; //ANGLE OF MODEL
 float rotateSpeed = 0.01f; //Speed at which it rotates
-const vec3 DEFAULT_DIR = vec3(1.0f, 1.0f, 0.0f);
-
-const vec3 UP = vec3(0.0f, 1.0f, 0.0f);
-const vec3 DOWN = vec3(0.0f, -1.0f, 0.0f);
-const vec3 RIGHT = vec3(1.0f, 0.0f, 0.0f);
-const vec3 LEFT = vec3(-1.0f, 1.0f, 0.0f);
-const vec3 BACKWARD = vec3(0.0f, 0.0f, -1.0f);
-const vec3 FORWARD = vec3(0.0f, 0.0f, 1.0f);
-
-const mat4 IDENTITY = mat4(1.0f);
 
 float nearPlane = 0.1f;
 float farPlane = 100.f;
 
 float aspectRatio = float(screenWidth) / float(screenHeight);
+
+int geometry = 2;
+
+GLuint numVertices = 0;
 
 int main() {
 	GLFWwindow *window;
@@ -99,8 +62,7 @@ int main() {
 	mat4 LocalWorld = mat4(1.0f); //Model World //identity matrix
 
 	while (!glfwWindowShouldClose(window)) { //Indica pedido de fecho glfwSetWindowShouldClose(window, 1); //Pede para fechar
-
-
+		
 		display();
 
 		glfwSwapBuffers(window); //Buffers
@@ -115,19 +77,25 @@ int main() {
 
 void init() {
 	//--------------------------- Create arrays in RAM ---------------------------
+	GLfloat *vertices = NULL;
+	GLfloat *colors = NULL;
 
-	//GLfloat vertices[NumVertices][3] = {
-	//	{ -1.0f, -1.0f, 0.0f }, { 1.0f, -1.0f, 0.0f }, { 0.0f,  1.0f, 0.0f } // Triangulo coordenadas vertices
-	//};
-	//
 
-	//GLfloat colors[NumVertices][3] = {
-	//	{ 1.0f, 0.0f, 0.0f }, { 0.0f, 1.0f, 0.0f }, { 0.0f, 0.0f, 1.0f } // Triangulo Cores Vertices
-	//};
-
-	   
-	GLfloat *vertices = LoadCube(); //Load Cube Vertices
-	GLfloat *colors = LoadColors(); //Load Colors Vertices
+	switch (geometry) {
+	case 1: //Triangle
+		numVertices += 3;
+		vertices = LoadTriangle();
+		colors = LoadTriangleColors();
+		break;
+	case 2: //Cube
+		numVertices += 6 * 6;
+		vertices = LoadCube(); //Load Cube Vertices
+		colors = LoadColors(); //Load Colors Vertices
+		break;
+	default:
+		throw "Invalid geometry selected";
+		break;
+	}
 
 	cout << "Ended Model Creation" << endl;
 
@@ -154,16 +122,16 @@ void init() {
 		glBindBuffer(GL_ARRAY_BUFFER, Buffers[i]); //Bind VBO to buffer GL_ARRAY_BUFFER
 		if (i == 0) {
 			//glBufferStorage(GL_ARRAY_BUFFER, sizeof(vertices) /*3 * 3 * sizeof(float)*/, vertices, 0); //Initialize the VBO that's active
-			glBufferStorage(GL_ARRAY_BUFFER, NumVertices * 3 * sizeof(float), vertices, 0); //Initialize the VBO that's active
+			glBufferStorage(GL_ARRAY_BUFFER, numVertices * 3 * sizeof(float), vertices, 0); //Initialize the VBO that's active
 			//glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW); //Initialize VBO 
 		}
 		else {
 			//glBufferStorage(GL_ARRAY_BUFFER, sizeof(colors) /*3 * 3 * sizeof(float)*/, colors, 0); //Initialize the VBO that's active 	
-			glBufferStorage(GL_ARRAY_BUFFER, NumVertices * 3 * sizeof(float), colors, 0); //Initialize the VBO that's active 	
+			glBufferStorage(GL_ARRAY_BUFFER, numVertices * 3 * sizeof(float), colors, 0); //Initialize the VBO that's active 	
 			//glBufferData(GL_ARRAY_BUFFER, sizeof(cores), vertices, GL_STATIC_DRAW);
 		}
 	}
-	
+
 	//---------------------- Shaders ---------------------------
 	ShaderInfo  shaders[] = {
 		{ GL_VERTEX_SHADER,   "triangles.vert" },
@@ -200,17 +168,13 @@ void init() {
 	glBindBuffer(GL_ARRAY_BUFFER, Buffers[1]);
 	//  connects the attribute 'vPosition' from shaders to the active VBO and VAO
 	glVertexAttribPointer(Colors_ID, 3 /*3 elements per vertice*/, GL_FLOAT/*float type*/, GL_FALSE, 0, nullptr);
-
-
+	
 	glEnableVertexAttribArray(Coords_ID); //Activate the Coordenate Attribute for the active VAO
 
 	glEnableVertexAttribArray(Colors_ID); //Activate the Color Attribute for the Active VAO
-
-
+	
 	glViewport(0, 0, screenWidth, screenHeight); //Define viewport Window
-
-
-
+	   
 }
 
 void display() {
@@ -229,8 +193,7 @@ void display() {
 
 	Projection = perspective(radians(45.0f), aspectRatio, nearPlane, farPlane);
 	LocalWorld = rotate(IDENTITY, ANGLE += rotateSpeed, normalize(UP + RIGHT)); //Rotate Model Automatically
-
-
+	
 	mat4 ModelViewProjection = Projection * View * LocalWorld;
 
 	GLint mvp_ID = glGetProgramResourceLocation(ShaderProgram, GL_UNIFORM, "MVP");
@@ -240,88 +203,7 @@ void display() {
 	glBindVertexArray(VAOs[0]);
 
 	//Draws Primitives GL_TRIANGLES using active VAOs
-	glDrawArrays(GL_TRIANGLES, 0, NumVertices);
-}
-
-
-
-GLfloat* LoadCube() {
-	NumVertices = 6 * 6;
-
-	GLfloat g_vertex_buffer_data[] = {
-	-1.0f,-1.0f,-1.0f, // triangle 1 : begin
-	-1.0f,-1.0f, 1.0f,
-	-1.0f, 1.0f, 1.0f, // triangle 1 : end
-	1.0f, 1.0f,-1.0f, // triangle 2 : begin
-	-1.0f,-1.0f,-1.0f,
-	-1.0f, 1.0f,-1.0f, // triangle 2 : end
-	1.0f,-1.0f, 1.0f,	//Start
-	-1.0f,-1.0f,-1.0f,
-	1.0f,-1.0f,-1.0f,	//End
-	1.0f, 1.0f,-1.0f,	//Start
-	1.0f,-1.0f,-1.0f,
-	-1.0f,-1.0f,-1.0f,	//End
-	-1.0f,-1.0f,-1.0f,	//Start
-	-1.0f, 1.0f, 1.0f,
-	-1.0f, 1.0f,-1.0f,	//End
-	1.0f,-1.0f, 1.0f,	//Start
-	-1.0f,-1.0f, 1.0f,
-	-1.0f,-1.0f,-1.0f,	//End
-	-1.0f, 1.0f, 1.0f,	//Start
-	-1.0f,-1.0f, 1.0f,
-	1.0f,-1.0f, 1.0f,	//End
-	1.0f, 1.0f, 1.0f,	//Start
-	1.0f,-1.0f,-1.0f,
-	1.0f, 1.0f,-1.0f,	//End
-	1.0f,-1.0f,-1.0f,	//Start
-	1.0f, 1.0f, 1.0f,	
-	1.0f,-1.0f, 1.0f,	//End
-	1.0f, 1.0f, 1.0f,	//Start
-	1.0f, 1.0f,-1.0f,	
-	-1.0f, 1.0f,-1.0f,	//End
-	1.0f, 1.0f, 1.0f,	//Start
-	-1.0f, 1.0f,-1.0f,
-	-1.0f, 1.0f, 1.0f,	//End
-	1.0f, 1.0f, 1.0f,	//Start
-	-1.0f, 1.0f, 1.0f,
-	1.0f,-1.0f, 1.0f	//End
-	};
-
-	GLfloat *vertices = (GLfloat *)malloc(NumVertices * 3 * sizeof(GLfloat));
-
-	for (int i = 0; i < NumVertices * 3; i++)
-	{
-		vertices[i] = g_vertex_buffer_data[i];
-	}
-
-	return vertices;
-}
-
-
-GLfloat* LoadColors() {
-	GLfloat *colors = (GLfloat *)malloc(NumVertices * 3 * sizeof(GLfloat));
-
-	for (int i = 0; i < NumVertices; i++)
-	{
-		for (int j = 0; j < 3; j++)
-		{
-			//vertices[i][j] = 1.0f, 0.0f, 0.0f
-			switch (j) {
-			case 0:
-				colors[i * 3 + j] = 1.0f;
-				break;
-			case 1:
-				colors[i * 3 + j] = 0.0f;
-				break;
-			case 2:
-				colors[i * 3 + j] = 0.0f;
-				break;
-			}
-		};
-
-	}
-
-	return colors;
+	glDrawArrays(GL_TRIANGLES, 0, numVertices);
 }
 
 
